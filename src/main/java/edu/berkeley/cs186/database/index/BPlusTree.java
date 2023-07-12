@@ -146,6 +146,17 @@ public class BPlusTree {
         LockUtil.ensureSufficientLockHeld(lockContext, LockType.NL);
 
         // TODO(proj2): implement
+        LeafNode leafNode = root.get(key);
+        List<DataBox> keys = leafNode.getKeys();
+        List<RecordId> recordIds = leafNode.getRids();
+        for (int i = 0; i < keys.size(); i++) {
+            int compareRes = key.compareTo(keys.get(i));
+            if (compareRes == 0) {
+                return Optional.of(recordIds.get(i));
+            } else if (compareRes < 0) {
+                break;
+            }
+        }
 
         return Optional.empty();
     }
