@@ -12,6 +12,8 @@ import edu.berkeley.cs186.database.table.RecordId;
 import java.nio.ByteBuffer;
 import java.util.*;
 
+import static edu.berkeley.cs186.database.common.Util.findTarget;
+
 /**
  * A leaf of a B+ tree. Every leaf in a B+ tree of order d stores between d and
  * 2d (key, record id) pairs and a pointer to its right sibling (i.e. the page
@@ -161,8 +163,65 @@ class LeafNode extends BPlusNode {
     @Override
     public Optional<Pair<DataBox, Long>> put(DataBox key, RecordId rid) {
         // TODO(proj2): implement
+        /*
+        1. Find the target index by using binary search
+        2. If there is a room to accommodate the new key, shift [targetIndex, lastIndex], put the new key on target index
+        3. If there is no room, put d keys in left page, put d + 1 keys in right page
+        **/
 
-        return Optional.empty();
+        Pair<Integer, Boolean> targetInfo = findTarget(keys, key);
+        if (targetInfo.getSecond()) {
+            throw new BPlusTreeException("Putting a duplicate key: " + key);
+        }
+        int d = metadata.getOrder();
+        if (keys.size() < 2 * d) {
+            for (int i = keys.size(); i > targetInfo.getFirst(); i--) {
+                keys.add(i, keys.get(i-1));
+                rids.add(i, rids.get(i-1));
+            }
+            keys.add(targetInfo.getFirst(), key);
+            rids.add(targetInfo.getFirst(), rid);
+            return Optional.empty();
+        } else {
+            List<Pair<DataBox, RecordId>> leftRoom = new ArrayList<>();
+            List<Pair<DataBox, RecordId>> rightRoom = new ArrayList<>();
+            int i = 0;
+            for (int leftIndex = 0; leftIndex < d; leftIndex++) {
+                if (i == targetInfo.getFirst()) {
+                    leftRoom.add(new Pair<>(key, rid));
+                } else {
+                    leftRoom.add(new Pair<>(keys.get(i), rids.get(i)));
+                    i++;
+                }
+            }
+            for (int rightIndex = 0; rightIndex < d + 1; rightIndex++) {
+                if (i == targetInfo.getFirst()) {
+                    rightRoom.add(new Pair<>(key, rid));
+                } else {
+                    rightRoom.add(new Pair<>(keys.get(i), rids.get(i)));
+                    i++;
+                }
+            }
+            keys.clear();
+            rids.clear();
+            for (int leftIndex = 0; leftIndex < leftRoom.size(); leftIndex++) {
+                keys.add(leftRoom.get(leftIndex).getFirst());
+                rids.add(leftRoom.get(leftIndex).getSecond());
+            }
+            Page page = bufferManager.fetchNewPage(treeContext, metadata.getPartNum());
+            List<DataBox> rightKeys = new ArrayList<>();
+            List<RecordId> rightRids = new ArrayList<>();
+            DataBox splitKey = null;
+            for (int rightIndex = 0; rightIndex < rightRoom.size(); rightIndex++) {
+                if (rightIndex == 0) splitKey = rightRoom.get(rightIndex).getFirst();
+                rightKeys.add(rightRoom.get(rightIndex).getFirst());
+                rightRids.add(rightRoom.get(rightIndex).getSecond());
+            }
+            LeafNode rightLeafNode = new LeafNode(metadata, bufferManager, page,
+                    rightKeys, rightRids, this.rightSibling, treeContext);
+            this.rightSibling = Optional.of(page.getPageNum());
+            return Optional.of(new Pair<>(splitKey, page.getPageNum()));
+        }
     }
 
     // See BPlusNode.bulkLoad.
